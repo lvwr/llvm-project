@@ -27,4 +27,3 @@ void X86MachineFunctionInfo::setRestoreBasePointer(const MachineFunction *MF) {
     }
   }
 }
-

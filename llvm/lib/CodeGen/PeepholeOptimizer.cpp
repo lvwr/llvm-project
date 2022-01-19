@@ -1794,6 +1794,7 @@ bool PeepholeOptimizer::runOnMachineFunction(MachineFunction &MF) {
               if (MI->shouldUpdateCallSiteInfo())
                 MI->getMF()->moveCallSiteInfo(MI, FoldMI);
               MI->eraseFromParent();
+              FoldMI->setPrototypeHash(MI->getPrototypeHash());
               DefMI->eraseFromParent();
               MRI->markUsesInDebugValueAsUndef(FoldedReg);
               FoldAsLoadDefCandidates.erase(FoldedReg);

@@ -470,6 +470,10 @@ public:
   /// TODO: Remove this after opaque pointer transition is complete.
   PointerType *getPointerTo(unsigned AddrSpace = 0) const;
 
+  //===-------------------------------------------------------------------===///
+  // Get a hash for the respective type.
+  uint32_t getPrototypeHash() const;
+
 private:
   /// Derived types like structures and arrays are sized iff all of the members
   /// of the type are sized as well. Since asking for their size is relatively

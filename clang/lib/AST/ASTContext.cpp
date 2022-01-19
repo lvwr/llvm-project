@@ -10056,6 +10056,8 @@ QualType ASTContext::mergeFunctionTypes(QualType lhs, QualType rhs,
     return {};
   if (lbaseInfo.getNoCfCheck() != rbaseInfo.getNoCfCheck())
     return {};
+  if (lbaseInfo.getCoarseCfCheck() != rbaseInfo.getCoarseCfCheck())
+    return {};
 
   // FIXME: some uses, e.g. conditional exprs, really want this to be 'both'.
   bool NoReturn = lbaseInfo.getNoReturn() || rbaseInfo.getNoReturn();

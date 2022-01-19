@@ -1473,6 +1473,9 @@ void CompilerInvocation::GenerateCodeGenArgs(
   else if (Opts.CFProtectionBranch)
     GenerateArg(Args, OPT_fcf_protection_EQ, "branch", SA);
 
+  if (Opts.FineIBT)
+    GenerateArg(Args, OPT_mfine_ibt, SA);
+
   for (const auto &F : Opts.LinkBitcodeFiles) {
     bool Builtint = F.LinkFlags == llvm::Linker::Flags::LinkOnlyNeeded &&
                     F.PropagateAttrs && F.Internalize;
@@ -1816,6 +1819,18 @@ bool CompilerInvocation::ParseCodeGenArgs(CodeGenOptions &Opts, ArgList &Args,
 
   if (Opts.PrepareForLTO && Args.hasArg(OPT_mibt_seal))
     Opts.IBTSeal = 1;
+
+  if (Args.hasArg(OPT_mfine_ibt)) {
+    if (T.getArch() != llvm::Triple::x86_64) {
+      Diags.Report(diag::warn_drv_unsupported_opt_for_target)
+          << "-mfine-ibt" << T.getArchName();
+    } else if (!Opts.CFProtectionBranch) {
+      Diags.Report(diag::err_drv_unsupported_opt) <<
+          "-mfine-ibt without -fcf-protection=<branch, full>";
+    } else {
+      Opts.FineIBT = 1;
+    }
+  }
 
   for (auto *A :
        Args.filtered(OPT_mlink_bitcode_file, OPT_mlink_builtin_bitcode)) {
@@ -3703,6 +3718,10 @@ bool CompilerInvocation::ParseLangArgs(LangOptions &Opts, ArgList &Args,
     }
   }
 
+  if (Args.hasArg(OPT_mfine_ibt)) {
+    Opts.FineIBT = 1;
+  }
+
   if ((Args.hasArg(OPT_fsycl_is_device) || Args.hasArg(OPT_fsycl_is_host)) &&
       !Args.hasArg(OPT_sycl_std_EQ)) {
     // If the user supplied -fsycl-is-device or -fsycl-is-host, but failed to
@@ -4218,6 +4237,11 @@ static void GeneratePreprocessorArgs(PreprocessorOptions &Opts,
         CodeGenOpts.CFProtectionBranch)
       continue;
 
+    // Don't generate __FINEIBT__ macro definition. This is implied by the
+    // -mfine-ibt option that is generated elsewhere.
+    if (M.first == "__FINEIBT__" && CodeGenOpts.FineIBT)
+      continue;
+
     GenerateArg(Args, M.second ? OPT_U : OPT_D, M.first, SA);
   }
 
@@ -4292,6 +4316,10 @@ static bool ParsePreprocessorArgs(PreprocessorOptions &Opts, ArgList &Args,
       Opts.addMacroDef("__CET__=2");
     else if (Name == "full")
       Opts.addMacroDef("__CET__=3");
+  }
+
+  if (Args.hasArg(OPT_mfine_ibt)) {
+    Opts.addMacroDef("__FINEIBT__");
   }
 
   // Add macros from the command line.

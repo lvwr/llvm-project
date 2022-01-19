@@ -612,6 +612,9 @@ private:
 
   SDNodeFlags Flags;
 
+  /// Prototype Hash
+  uint32_t PrototypeHash = 0;
+
 public:
   /// Unique and persistent id per SDNode in the DAG.
   /// Used for debug printing.
@@ -1050,6 +1053,12 @@ public:
 
   /// This method should only be used by the SDUse class.
   void addUse(SDUse &U) { U.addToList(&UseList); }
+
+  /// Set the prototype hash.
+  void setPrototypeHash(uint32_t Hash) { PrototypeHash = Hash; }
+
+  /// Return the prototype hash.
+  uint32_t getPrototypeHash() const { return PrototypeHash; }
 
 protected:
   static SDVTList getSDVTList(EVT VT) {

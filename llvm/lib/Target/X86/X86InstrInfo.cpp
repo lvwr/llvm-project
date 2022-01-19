@@ -5681,6 +5681,9 @@ static MachineInstr *FuseTwoAddrInst(MachineFunction &MF, unsigned Opcode,
 
   updateOperandRegConstraints(MF, *NewMI, TII);
 
+  if (MI.getPrototypeHash())
+    NewMI->setPrototypeHash(MI.getPrototypeHash());
+
   MachineBasicBlock *MBB = InsertPt->getParent();
   MBB->insert(InsertPt, NewMI);
 

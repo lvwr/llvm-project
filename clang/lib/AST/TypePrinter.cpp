@@ -1003,6 +1003,8 @@ void TypePrinter::printFunctionAfter(const FunctionType::ExtInfo &Info,
     OS << " __attribute__((no_caller_saved_registers))";
   if (Info.getNoCfCheck())
     OS << " __attribute__((nocf_check))";
+  if (Info.getCoarseCfCheck())
+    OS << " __attribute__((coarsecf_check))";
 }
 
 void TypePrinter::printFunctionNoProtoBefore(const FunctionNoProtoType *T,
@@ -1724,6 +1726,7 @@ void TypePrinter::printAttributedAfter(const AttributedType *T,
   // FIXME: When Sema learns to form this AttributedType, avoid printing the
   // attribute again in printFunctionProtoAfter.
   case attr::AnyX86NoCfCheck: OS << "nocf_check"; break;
+  case attr::AnyX86CoarseCfCheck: OS << "coarsecf_check"; break;
   case attr::CDecl: OS << "cdecl"; break;
   case attr::FastCall: OS << "fastcall"; break;
   case attr::StdCall: OS << "stdcall"; break;

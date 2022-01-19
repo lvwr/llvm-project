@@ -625,8 +625,12 @@ MachineInstr *TargetInstrInfo::foldMemoryOperand(MachineInstr &MI,
     NewMI->addMemOperand(MF, MMO);
 
     // The pass "x86 speculative load hardening" always attaches symbols to
-    // call instructions. We need copy it form old instruction.
+    // call instructions. We need copy it from the old instruction.
     NewMI->cloneInstrSymbols(MF, MI);
+
+    // When FineIBT is set, the pass "x86 indirect branch tracking" will use
+    // hash information attached to call instructions. This needs to be copied.
+    NewMI->setPrototypeHash(MI.getPrototypeHash());
 
     return NewMI;
   }

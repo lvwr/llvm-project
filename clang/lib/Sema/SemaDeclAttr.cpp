@@ -2182,6 +2182,14 @@ static void handleNoCfCheckAttr(Sema &S, Decl *D, const ParsedAttr &Attrs) {
     handleSimpleAttribute<AnyX86NoCfCheckAttr>(S, D, Attrs);
 }
 
+static void handleCoarseCfCheckAttr(Sema &S, Decl *D, const ParsedAttr &Attrs) {
+  if (!S.getLangOpts().CFProtectionBranch || !S.getLangOpts().FineIBT)
+    S.Diag(Attrs.getLoc(), diag::warn_coarsecf_check_attribute_ignored);
+  else
+    handleSimpleAttribute<AnyX86CoarseCfCheckAttr>(S, D, Attrs);
+}
+
+
 bool Sema::CheckAttrNoArgs(const ParsedAttr &Attrs) {
   if (!Attrs.checkExactlyNumArgs(*this, 0)) {
     Attrs.setInvalid();
@@ -8434,6 +8442,9 @@ static void ProcessDeclAttribute(Sema &S, Scope *scope, Decl *D,
     break;
   case ParsedAttr::AT_AnyX86NoCfCheck:
     handleNoCfCheckAttr(S, D, AL);
+    break;
+  case ParsedAttr::AT_AnyX86CoarseCfCheck:
+    handleCoarseCfCheckAttr(S, D, AL);
     break;
   case ParsedAttr::AT_NoThrow:
     if (!AL.isUsedAsTypeAttr())

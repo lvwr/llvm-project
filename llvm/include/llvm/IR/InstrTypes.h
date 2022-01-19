@@ -1869,6 +1869,10 @@ public:
   /// Determine if the call should not perform indirect branch tracking.
   bool doesNoCfCheck() const { return hasFnAttr(Attribute::NoCfCheck); }
 
+  /// Determine if the call should not perform fine-grained indirect branch
+  /// tracking.
+  bool doesCoarseCfCheck() const { return hasFnAttr(Attribute::CoarseCfCheck); }
+
   /// Determine if the call cannot unwind.
   bool doesNotThrow() const { return hasFnAttr(Attribute::NoUnwind); }
   void setDoesNotThrow() { addFnAttr(Attribute::NoUnwind); }

@@ -131,6 +131,10 @@ private:
                                         // anything other than to convey comment
                                         // information to AsmPrinter.
 
+  uint32_t PrototypeHash = 0;           // Prototype Hash used by FineIBT.
+
+  bool DoNotRelax = 0;                  // Avoid instruction relaxation.
+
   // OperandCapacity has uint8_t size, so it should be next to AsmPrinterFlags
   // to properly pack.
   using OperandCapacity = ArrayRecycler<MachineOperand>::Capacity;
@@ -346,6 +350,18 @@ public:
   void clearFlag(MIFlag Flag) {
     Flags &= ~((uint16_t)Flag);
   }
+
+  /// Set the prototype hash to be used by FineIBT.
+  void setPrototypeHash(uint32_t Hash) { PrototypeHash = Hash; }
+
+  /// Return the prototype hash.
+  uint32_t getPrototypeHash() const { return PrototypeHash; }
+
+  /// Set do not relax.
+  void setDoNotRelax(bool Flag) { DoNotRelax = Flag; }
+
+  /// Get DoNotRelax property.
+  bool getDoNotRelax() const { return DoNotRelax; }
 
   /// Return true if MI is in a bundle (but not the first MI in a bundle).
   ///

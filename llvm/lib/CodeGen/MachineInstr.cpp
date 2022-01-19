@@ -148,6 +148,10 @@ MachineInstr::MachineInstr(MachineFunction &MF, const MachineInstr &MI)
 
   // Copy all the sensible flags.
   setFlags(MI.Flags);
+
+  // Copy the prototype hash if any.
+  uint32_t Hash = MI.getPrototypeHash();
+  setPrototypeHash(Hash);
 }
 
 void MachineInstr::moveBefore(MachineInstr *MovePos) {
@@ -660,6 +664,10 @@ bool MachineInstr::isIdenticalTo(const MachineInstr &Other,
     if (getDebugLoc() && Other.getDebugLoc() &&
         getDebugLoc() != Other.getDebugLoc())
       return false;
+
+  if (getPrototypeHash() != Other.getPrototypeHash())
+    return false;
+
   return true;
 }
 

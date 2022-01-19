@@ -4656,6 +4656,10 @@ X86TargetLowering::LowerCall(TargetLowering::CallLoweringInfo &CLI,
     // function making a tail call to a function returning int.
     MF.getFrameInfo().setHasTailCall();
     SDValue Ret = DAG.getNode(X86ISD::TC_RETURN, dl, NodeTys, Ops);
+    if (CB && IsCFProtectionSupported && !CB->doesCoarseCfCheck()) {
+      FunctionType *FuncType = CB->getFunctionType();
+      Ret.getNode()->setPrototypeHash(FuncType->getPrototypeHash());
+    }
     DAG.addCallSiteInfo(Ret.getNode(), std::move(CSInfo));
     return Ret;
   }
@@ -4679,6 +4683,19 @@ X86TargetLowering::LowerCall(TargetLowering::CallLoweringInfo &CLI,
     Chain = DAG.getNode(X86ISD::CALL_RVMARKER, dl, NodeTys, Ops);
   } else {
     Chain = DAG.getNode(X86ISD::CALL, dl, NodeTys, Ops);
+    FunctionType *FuncType = NULL;
+    if (IsCFProtectionSupported) {
+      if (CB && !CB->doesCoarseCfCheck()) {
+        FuncType = CB->getFunctionType();
+      }
+      if (FuncType) {
+        Chain.getNode()->setPrototypeHash(FuncType->getPrototypeHash());
+      } else {
+        Chain.getNode()->setPrototypeHash(0);
+        LLVM_DEBUG(dbgs() << "FineIBT hash is set to zero in "
+                          << MF.getName().str() << "\n");
+      }
+    }
   }
 
   InFlag = Chain.getValue(1);

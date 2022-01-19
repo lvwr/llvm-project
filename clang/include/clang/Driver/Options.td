@@ -1936,6 +1936,8 @@ def fcf_protection : Flag<["-"], "fcf-protection">, Group<f_Group>, Flags<[CoreO
   HelpText<"Enable cf-protection in 'full' mode">;
 def mibt_seal : Flag<["-"], "mibt-seal">, Group<m_Group>, Flags<[CoreOption, CC1Option]>,
   HelpText<"Optimize fcf-protection=branch/full (requires LTO).">;
+def mfine_ibt : Flag<["-"], "mfine-ibt">, Group<m_Group>, Flags<[CoreOption, CC1Option]>,
+  HelpText<"Enable FineIBT (fine-grained forward-edge IBT instrumentation)">;
 
 defm xray_instrument : BoolFOption<"xray-instrument",
   LangOpts<"XRayInstrument">, DefaultFalse,

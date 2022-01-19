@@ -231,6 +231,13 @@ public:
     return true;
   };
 
+  virtual bool
+  checkFineIBTSupported(DiagnosticsEngine &Diags) const override {
+    if (getTriple().getArch() == llvm::Triple::x86_64)
+      return true;
+    return false;
+  }
+
   virtual bool validateOperandSize(const llvm::StringMap<bool> &FeatureMap,
                                    StringRef Constraint, unsigned Size) const;
 

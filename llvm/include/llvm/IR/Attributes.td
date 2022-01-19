@@ -169,6 +169,9 @@ def NoSync : EnumAttr<"nosync", [FnAttr]>;
 /// Disable Indirect Branch Tracking.
 def NoCfCheck : EnumAttr<"nocf_check", [FnAttr]>;
 
+/// Disable Fine-grained Indirect Branch Tracking (FineIBT).
+def CoarseCfCheck: EnumAttr<"coarsecf_check", [FnAttr]>;
+
 /// Function should not be instrumented.
 def NoProfile : EnumAttr<"noprofile", [FnAttr]>;
 

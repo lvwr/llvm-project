@@ -104,6 +104,7 @@ private:
   /// built on demand, so that the list isn't allocated until the first client
   /// needs it.  The hasLazyArguments predicate returns true if the arg list
   /// hasn't been set up yet.
+
 public:
   bool hasLazyArguments() const {
     return getSubclassDataFromValue() & (1<<0);
@@ -551,6 +552,12 @@ public:
 
   /// Determine if the function should not perform indirect branch tracking.
   bool doesNoCfCheck() const { return hasFnAttribute(Attribute::NoCfCheck); }
+
+  /// Determine if the function should not perform fine-grained indirect branch
+  /// tracking.
+  bool doesCoarseCfCheck() const {
+    return hasFnAttribute(Attribute::CoarseCfCheck);
+  }
 
   /// Determine if the function cannot unwind.
   bool doesNotThrow() const {

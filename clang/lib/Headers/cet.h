@@ -22,7 +22,14 @@
 
 # ifdef __LP64__
 #  if __CET__ & 0x1
-#    define _CET_ENDBR endbr64
+#    if __FINEIBT__
+#      define _CET_ENDBR endbr64;                     \
+                         nopl 0x200(%rax,%rax,1);     \
+                         nopw %fs:0x200(%rax,%rax,1); \
+                         nopw %fs:0x200(%rax,%rax,1);
+#    else
+#      define _CET_ENDBR endbr64
+#    endif
 #  else
 #    define _CET_ENDBR
 #  endif

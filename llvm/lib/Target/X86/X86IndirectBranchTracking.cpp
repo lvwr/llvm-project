@@ -23,6 +23,7 @@
 #include "llvm/CodeGen/MachineFunctionPass.h"
 #include "llvm/CodeGen/MachineInstrBuilder.h"
 #include "llvm/CodeGen/MachineModuleInfo.h"
+#include "llvm/CodeGen/RegisterScavenging.h"
 
 using namespace llvm;
 
@@ -59,6 +60,18 @@ private:
   /// It will add ENDBR32 or ENDBR64 opcode, depending on the target.
   /// \returns true if the ENDBR was added and false otherwise.
   bool addENDBR(MachineBasicBlock &MBB, MachineBasicBlock::iterator I) const;
+
+  /// Add endbr instruction as the first instruction in functions that can
+  /// be reached through indirect calls. This is a coarse-grained IBT scheme.
+  bool applyCoarseIBT(MachineFunction &MF);
+
+  /// Add endbr + hash checks as first instructions in functions that can be
+  /// reached through indirect calls. This is a fine-grained IBT scheme.
+  bool applyFineIBT(MachineFunction &MF);
+
+  /// Spawn FineIBT hash set operations using R11 before indirect calls. Also
+  /// swap register if If R11 is used as function pointer for the indirect call.
+  bool fixIndirectCalls(MachineFunction &MF);
 };
 
 } // end anonymous namespace
@@ -88,16 +101,41 @@ bool X86IndirectBranchTrackingPass::addENDBR(
 static bool IsCallReturnTwice(llvm::MachineOperand &MOp) {
   if (!MOp.isGlobal())
     return false;
-  auto *CalleeFn = dyn_cast<Function>(MOp.getGlobal());
+  const Function *CalleeFn = dyn_cast<Function>(MOp.getGlobal());
   if (!CalleeFn)
     return false;
   AttributeList Attrs = CalleeFn->getAttributes();
   return Attrs.hasFnAttr(Attribute::ReturnsTwice);
 }
 
+static unsigned grabR11Replacement(MachineBasicBlock *BB, MachineInstr *I) {
+  unsigned AuxReg = 0;
+  RegScavenger RS;
+  RS.enterBasicBlock(*BB);
+  RS.forward(I);
+  AuxReg = RS.FindUnusedReg(&X86::GR64RegClass);
+  if (!AuxReg) {
+    MachineFunction *MF = BB->getParent();
+    WithColor::warning()
+      << "FineIBT: No register available in " << MF->getName() << ".\n";
+  }
+  return AuxReg;
+}
+
+// Lists functions that should not get an endbr in its prologue.
+static bool ignoreList(StringRef Name) {
+  if (Name.startswith("__llvm_retpoline_")) return true;
+  return false;
+}
+
+static bool isKernelInit(Function &F) {
+  return (F.hasSection() && F.getSection().startswith(".init.text"));
+}
+
 // Checks if function should have an ENDBR in its prologue
-static bool needsPrologueENDBR(MachineFunction &MF, const Module *M) {
+static bool needsPrologueENDBR(MachineFunction &MF) {
   Function &F = MF.getFunction();
+  Module *M = F.getParent();
 
   if (F.doesNoCfCheck())
     return false;
@@ -113,16 +151,162 @@ static bool needsPrologueENDBR(MachineFunction &MF, const Module *M) {
   // Only address taken functions in LTO'ed kernel are reachable indirectly.
   // IBTSeal implies LTO, thus only check if function is address taken.
   case CodeModel::Kernel:
+    // Check if function is in the ignore list.
+    if (ignoreList(F.getName()))
+      return false;
+
     // Check if ibt-seal was enabled (implies LTO is being used).
-    if (IBTSeal) {
+    if (IBTSeal)
       return F.hasAddressTaken();
-    }
-    // if !IBTSeal, fall into default case.
+
+    // Fall into default case.
     LLVM_FALLTHROUGH;
-  // Address taken or externally linked functions may be reachable.
+    // Address taken or externally linked functions may be reachable.
   default:
     return (F.hasAddressTaken() || !F.hasLocalLinkage());
   }
+}
+
+bool X86IndirectBranchTrackingPass::fixIndirectCalls(MachineFunction &MF) {
+  bool Changed = false;
+  unsigned AuxReg;
+
+  for (MachineBasicBlock &BB : MF) {
+    for (MachineInstr &I : BB) {
+      unsigned Opcode = I.getOpcode();
+
+      switch (Opcode) {
+        // If this is an indirect call, we need to set the FineIBT hash.
+        case X86::CALL64r:
+        case X86::CALL64m:
+        case X86::TAILJMPr64:
+        case X86::TAILJMPr:
+        case X86::TAILJMPm64:
+        case X86::TAILJMPm:
+        case X86::TAILJMPm64_REX:
+        case X86::TAILJMPr64_REX:
+          break;
+        // Otherwise go to next instruction.
+        default:
+          continue;
+      }
+
+      // Instructions with attribute CoarseCfCheck have Hash == 0. Skip them.
+      if (I.getPrototypeHash() == 0) {
+        LLVM_DEBUG(WithColor::warning()
+                     << "FineIBT: NULL Hash in " << MF.getName() << "\n");
+        continue;
+      }
+
+      // if R11 is used as a pointer, we need to use a different register.
+      MachineOperand &MO = I.getOperand(0);
+      if (MO.isReg() && MO.getReg() == X86::R11) {
+        AuxReg = grabR11Replacement(&BB, &I);
+        if (!AuxReg)
+          continue;
+        MO.setReg(AuxReg);
+        BuildMI(BB, I, DebugLoc(), TII->get(X86::MOV64rr), AuxReg)
+          .addReg(X86::R11);
+      }
+
+      // for CALL64m/TAILJMPm we need to also check the second register.
+      if (Opcode == X86::CALL64m || Opcode == X86::TAILJMPm64) {
+        MachineOperand &MO = I.getOperand(2);
+        if (MO.isReg() && MO.getReg() == X86::R11) {
+          AuxReg = grabR11Replacement(&BB, &I);
+          if (!AuxReg)
+            continue;
+          MO.setReg(AuxReg);
+          BuildMI(BB, I, DebugLoc(), TII->get(X86::MOV64rr), AuxReg)
+            .addReg(X86::R11);
+        }
+      }
+      Changed = true;
+      // Emit the FineIBT hash set operation.
+      BuildMI(BB, I, DebugLoc(), TII->get(X86::MOV32ri), X86::R11)
+        .addImm(I.getPrototypeHash());
+    }
+  }
+  return Changed;
+}
+
+bool X86IndirectBranchTrackingPass::applyFineIBT(MachineFunction &MF) {
+  Function &F = MF.getFunction();
+
+  if (!needsPrologueENDBR(MF))
+    return false;
+
+  // Get the function's entry block
+  MachineBasicBlock *Entry = &MF.front();
+  Entry->addLiveIn(X86::R11);
+
+  if (!F.doesCoarseCfCheck() && !isKernelInit(F)) {
+    // Create and organize new basic blocks
+    // ChkMBB will hold the ENDBR + Hash check
+    MachineBasicBlock *ChkMBB = MF.CreateMachineBasicBlock();
+    MachineBasicBlock *VltMBB = MF.CreateMachineBasicBlock();
+
+    MF.push_front(VltMBB);
+    MF.push_front(ChkMBB);
+    MF.RenumberBlocks();
+
+    for (const auto &LI : Entry->liveins()) {
+      ChkMBB->addLiveIn(LI);
+    }
+    ChkMBB->addLiveIn(X86::R11);
+    ChkMBB->addSuccessor(Entry);
+    ChkMBB->addSuccessor(VltMBB);
+
+    addENDBR(*ChkMBB, ChkMBB->begin());
+
+    uint32_t Hash = F.getFunctionType()->getPrototypeHash();
+    BuildMI(ChkMBB, DebugLoc(), TII->get(X86::SUB32ri), X86::R11D)
+      .addReg(X86::R11D, RegState::Kill)
+      .addImm(Hash);
+
+    MachineInstr *MI = BuildMI(ChkMBB, DebugLoc(), TII->get(X86::JCC_1))
+      .addMBB(Entry)
+      .addImm(X86::COND_E);
+    MI->setDoNotRelax(true);
+
+    // If the check fails, we need to fail. In the long run, we'll replace
+    // call __fineibt_handler with an ud2, for less space overhead. For now
+    // use call for debugging.
+    //BuildMI(VltMBB, DebugLoc(), TII->get(X86::TRAP));
+    //BuildMI(VltMBB, DebugLoc(), TII->get(X86::NOOP));
+    BuildMI(VltMBB, DebugLoc(), TII->get(X86::CALL64pcrel32))
+      .addExternalSymbol("__fineibt_handler");
+  } else if (!isKernelInit(F)) {
+
+    MachineBasicBlock *XorMBB = MF.CreateMachineBasicBlock();
+    MF.push_front(XorMBB);
+    for (const auto &LI : Entry->liveins()) {
+      XorMBB->addLiveIn(LI);
+    }
+    XorMBB->addLiveIn(X86::R11);
+    XorMBB->addSuccessor(Entry);
+    MF.RenumberBlocks();
+
+    addENDBR(*XorMBB, XorMBB->begin());
+
+    // Zero R11 so it doesn't contain left-over hashes.
+    BuildMI(XorMBB, DebugLoc(), TII->get(X86::XOR64rr), X86::R11)
+      .addReg(X86::R11)
+      .addReg(X86::R11);
+  } else {
+    addENDBR(*Entry, Entry->begin());
+  }
+
+  return true;
+}
+
+bool X86IndirectBranchTrackingPass::applyCoarseIBT(MachineFunction &MF) {
+  // If function is reachable indirectly, mark the first BB with ENDBR.
+  if (needsPrologueENDBR(MF)) {
+    MachineFunction::iterator MBB = MF.begin();
+    return addENDBR(*MBB, MBB->begin());
+  }
+  return false;
 }
 
 bool X86IndirectBranchTrackingPass::runOnMachineFunction(MachineFunction &MF) {
@@ -132,10 +316,13 @@ bool X86IndirectBranchTrackingPass::runOnMachineFunction(MachineFunction &MF) {
   // Check that the cf-protection-branch is enabled.
   Metadata *isCFProtectionSupported = M->getModuleFlag("cf-protection-branch");
 
-  //  NB: We need to enable IBT in jitted code if JIT compiler is CET
-  //  enabled.
+  // Check that FineIBT is enabled.
+  Metadata *FineIBT = M->getModuleFlag("fine-ibt");
+
+  // NB: We need to enable IBT in jitted code if JIT compiler is CET
+  // enabled.
   const X86TargetMachine *TM =
-      static_cast<const X86TargetMachine *>(&MF.getTarget());
+    static_cast<const X86TargetMachine *>(&MF.getTarget());
 #ifdef __CET__
   bool isJITwithCET = TM->isJIT();
 #else
@@ -150,13 +337,20 @@ bool X86IndirectBranchTrackingPass::runOnMachineFunction(MachineFunction &MF) {
   TII = SubTarget.getInstrInfo();
   EndbrOpcode = SubTarget.is64Bit() ? X86::ENDBR64 : X86::ENDBR32;
 
+  if (FineIBT) {
+    Changed |= applyFineIBT(MF);
+    Changed |= fixIndirectCalls(MF);
+  } else {
+    Changed |= applyCoarseIBT(MF);
+  }
+
   // If function is reachable indirectly, mark the first BB with ENDBR.
-  if (needsPrologueENDBR(MF, M)) {
-    auto MBB = MF.begin();
+  if (needsPrologueENDBR(MF)) {
+    MachineFunction::iterator MBB = MF.begin();
     Changed |= addENDBR(*MBB, MBB->begin());
   }
 
-  for (auto &MBB : MF) {
+  for (MachineBasicBlock &MBB : MF) {
     // Find all basic blocks that their address was taken (for example
     // in the case of indirect jump) and add ENDBR instruction.
     if (MBB.hasAddressTaken())
@@ -175,20 +369,20 @@ bool X86IndirectBranchTrackingPass::runOnMachineFunction(MachineFunction &MF) {
     if (TM->Options.ExceptionModel == ExceptionHandling::SjLj) {
       for (MachineBasicBlock::iterator I = MBB.begin(); I != MBB.end(); ++I) {
         // New Landingpad BB without EHLabel.
-        if (MBB.isEHPad()) {
-          if (I->isDebugInstr())
-            continue;
-          Changed |= addENDBR(MBB, I);
-          break;
-        } else if (I->isEHLabel()) {
-          // Old Landingpad BB (is not Landingpad now) with
-          // the the old "callee" EHLabel.
-          MCSymbol *Sym = I->getOperand(0).getMCSymbol();
-          if (!MF.hasCallSiteLandingPad(Sym))
-            continue;
-          Changed |= addENDBR(MBB, std::next(I));
-          break;
-        }
+          if (MBB.isEHPad()) {
+            if (I->isDebugInstr())
+              continue;
+            Changed |= addENDBR(MBB, I);
+            break;
+          } else if (I->isEHLabel()) {
+            // Old Landingpad BB (is not Landingpad now) with
+            // the the old "callee" EHLabel.
+              MCSymbol *Sym = I->getOperand(0).getMCSymbol();
+            if (!MF.hasCallSiteLandingPad(Sym))
+              continue;
+            Changed |= addENDBR(MBB, std::next(I));
+            break;
+          }
       }
     } else if (MBB.isEHPad()){
       for (MachineBasicBlock::iterator I = MBB.begin(); I != MBB.end(); ++I) {

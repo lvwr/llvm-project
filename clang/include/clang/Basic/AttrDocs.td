@@ -4605,6 +4605,26 @@ pointer (by adding nocf_check prefix to the indirect-call instruction).
 }];
 }
 
+def AnyX86CoarseCfCheckDocs : Documentation {
+  let Category = DocCatFunction;
+  let Content = [{
+Jump Oriented Programming attacks rely on tampering with addresses used by
+indirect call / jmp, e.g. redirect control-flow to non-programmer
+intended bytes in the binary.
+X86 Supports Indirect Branch Tracking (IBT) as part of Control-Flow
+Enforcement Technology (CET). IBT instruments ENDBR instructions used to
+specify valid targets of indirect call / jmp.
+The ``nocf_check`` attribute has two roles:
+1. Appertains to a function - add ENDBR instruction at the beginning of the
+function without adding FineIBT checks, this will prevent the creation of
+FineIBT instrumentation which does prototype checking. This is useful for
+making function the compatible with code that breaks prototype-matching, such
+as those which use opaque function pointers for function invocation.
+2. Appertains to a function pointer - do not add code instrumentation which
+prepares prototype checking to indirect calls.
+}];
+}
+
 def SwiftCallDocs : Documentation {
   let Category = DocCatVariable;
   let Content = [{

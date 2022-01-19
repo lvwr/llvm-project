@@ -109,6 +109,8 @@ CODEGENOPT(CFProtectionBranch , 1, 0) ///< if -fcf-protection is
                                       ///< set to full or branch.
 CODEGENOPT(IBTSeal, 1, 0)             ///< set to optimize CFProtectionBranch.
 
+CODEGENOPT(FineIBT , 1, 0) ///< if -mfine-ibt is used to make
+                           ///< -fcf-protection=branch fine-grained.
 CODEGENOPT(XRayInstrumentFunctions , 1, 0) ///< Set when -fxray-instrument is
                                            ///< enabled.
 CODEGENOPT(StackSizeSection  , 1, 0) ///< Set when -fstack-size-section is enabled.
