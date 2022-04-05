@@ -2692,6 +2692,8 @@ void IBTPltSection::writeTo(uint8_t *buf) {
   target->writeIBTPlt(buf, in.plt->getNumEntries());
 }
 
+bool IBTPltSection::isNeeded() const { return in.plt->getNumEntries() > 0; }
+
 size_t IBTPltSection::getSize() const {
   // 16 is the header size of .plt.
   return 16 + in.plt->getNumEntries() * target->pltEntrySize;

@@ -762,6 +762,7 @@ public:
   IBTPltSection();
   void writeTo(uint8_t *Buf) override;
   size_t getSize() const override;
+  bool isNeeded() const override;
 };
 
 class GdbIndexSection final : public SyntheticSection {
