@@ -883,6 +883,14 @@ static void emitNonLazyStubs(MachineModuleInfo *MMI, MCStreamer &OutStreamer) {
   }
 }
 
+void X86AsmPrinter::emitInt3(unsigned N) {
+  MCInst TmpInst;
+  TmpInst.setOpcode(X86::INT3);
+
+  for (; N; --N)
+    EmitToStreamer(*OutStreamer, TmpInst);
+}
+
 void X86AsmPrinter::emitEndOfAsmFile(Module &M) {
   const Triple &TT = TM.getTargetTriple();
 

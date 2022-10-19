@@ -590,6 +590,9 @@ public:
   /// Emit N NOP instructions.
   void emitNops(unsigned N);
 
+  /// Emit N Int3 instructions (on supported arch).
+  virtual void emitInt3(unsigned N);
+
   //===------------------------------------------------------------------===//
   // Symbol Lowering Routines.
   //===------------------------------------------------------------------===//

@@ -154,6 +154,7 @@ public:
   void emitFunctionBodyStart() override;
   void emitFunctionBodyEnd() override;
   void emitKCFITypeId(const MachineFunction &MF) override;
+  void emitInt3(unsigned N) override;
 
   bool shouldEmitWeakSwiftAsyncExtendedFramePointerFlags() const override {
     return ShouldEmitWeakSwiftAsyncExtendedFramePointerFlags;

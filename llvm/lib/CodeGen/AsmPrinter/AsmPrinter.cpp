@@ -959,7 +959,13 @@ void AsmPrinter::emitFunctionHeader() {
     CurrentPatchableFunctionEntrySym =
         OutContext.createLinkerPrivateTempSymbol();
     OutStreamer->emitLabel(CurrentPatchableFunctionEntrySym);
-    emitNops(PatchableFunctionPrefix);
+
+    if (MF->getTarget().getCodeModel() == CodeModel::Kernel &&
+        TM.getTargetTriple().getArch() == Triple::x86_64) {
+      emitInt3(PatchableFunctionPrefix);
+    } else {
+      emitNops(PatchableFunctionPrefix);
+    }
   } else if (PatchableFunctionEntry) {
     // May be reassigned when emitting the body, to reference the label after
     // the initial BTI (AArch64) or endbr32/endbr64 (x86).
@@ -3507,6 +3513,11 @@ void AsmPrinter::emitNops(unsigned N) {
   MCInst Nop = MF->getSubtarget().getInstrInfo()->getNop();
   for (; N; --N)
     EmitToStreamer(*OutStreamer, Nop);
+}
+
+void AsmPrinter::emitInt3(unsigned N) {
+  // Target doesn't support this yet!
+  llvm_unreachable("Target does not support emitInt3");
 }
 
 //===----------------------------------------------------------------------===//
